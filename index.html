@@ -169,6 +169,61 @@
       100% { background-position: -30% 0; }
     }
 
+    /* ---- Bouton son (haut droite) : 3 barres façon égaliseur ---- */
+    #andre-intro .andre-sound {
+      position: absolute;
+      top: clamp(1rem, 3vh, 1.8rem);
+      right: clamp(1rem, 3vh, 1.8rem);
+      z-index: 5;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 30px;
+      margin: 0;
+      padding: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      opacity: .4;
+      transition: opacity .3s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #andre-intro .andre-sound:hover { opacity: .9; }
+    #andre-intro .andre-sound:focus-visible {
+      outline: 1px solid var(--andre-fg);
+      outline-offset: 3px;
+      opacity: .9;
+    }
+    #andre-intro.andre-is-leaving .andre-sound {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .7s ease;
+    }
+
+    #andre-intro .andre-sound-bar {
+      display: block;
+      width: 2px;
+      background: var(--andre-fg);
+      border-radius: 1px;
+      transform-origin: bottom;
+      transform: scaleY(.35);
+      transition: transform .3s ease;
+    }
+    #andre-intro .andre-sound-bar:nth-child(1) { height: 8px; }
+    #andre-intro .andre-sound-bar:nth-child(2) { height: 14px; }
+    #andre-intro .andre-sound-bar:nth-child(3) { height: 10px; }
+
+    /* Son actif : les barres dansent doucement */
+    #andre-intro .andre-sound.andre-sound-on .andre-sound-bar {
+      animation: andre-eq 1.1s ease-in-out infinite;
+    }
+    #andre-intro .andre-sound.andre-sound-on .andre-sound-bar:nth-child(2) { animation-delay: .15s; }
+    #andre-intro .andre-sound.andre-sound-on .andre-sound-bar:nth-child(3) { animation-delay: .3s; }
+    @keyframes andre-eq {
+      0%, 100% { transform: scaleY(.35); }
+      50%      { transform: scaleY(1); }
+    }
+
     /* ---- Voile de sortie (fondu au noir) ---- */
     #andre-intro .andre-fade {
       position: absolute;
@@ -182,6 +237,10 @@
     #andre-intro.andre-is-fading .andre-fade { opacity: 1; }
 
     @media (prefers-reduced-motion: reduce) {
+      #andre-intro .andre-sound.andre-sound-on .andre-sound-bar {
+        animation: none;
+        transform: scaleY(1);
+      }
       #andre-intro .andre-cta {
         animation: none;
         opacity: .6;
@@ -214,6 +273,12 @@
       <p>Directeur Artistique</p>
       <div class="andre-cta" aria-hidden="true">ENTER</div>
     </header>
+
+    <button class="andre-sound" type="button" aria-label="Activer le son" aria-pressed="false">
+      <span class="andre-sound-bar"></span>
+      <span class="andre-sound-bar"></span>
+      <span class="andre-sound-bar"></span>
+    </button>
 
     <div class="andre-fade" aria-hidden="true"></div>
   </div>
@@ -459,8 +524,16 @@
     root.addEventListener("touchmove", onTouchMove, { passive: true });
 
     /* ---------- Battement de cœur en ambiance (Web Audio, aucun fichier) ---------- */
+    var soundBtn = root.querySelector(".andre-sound");
     var audioCtx = null;
     var heartbeatTimer = 0;
+    var userMuted = false;
+
+    function setSoundUI(on) {
+      soundBtn.classList.toggle("andre-sound-on", on);
+      soundBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      soundBtn.setAttribute("aria-label", on ? "Couper le son" : "Activer le son");
+    }
 
     function thump(when, strength) {
       /* basse sourde : sinus grave avec chute de fréquence + enveloppe courte */
@@ -485,9 +558,10 @@
     }
 
     function startHeartbeat() {
-      if (heartbeatTimer || !audioCtx || audioCtx.state !== "running") return;
+      if (userMuted || heartbeatTimer || !audioCtx || audioCtx.state !== "running") return;
       playHeartbeatPair();
       heartbeatTimer = setInterval(playHeartbeatPair, 1100);
+      setSoundUI(true);
     }
 
     function stopHeartbeat() {
@@ -515,6 +589,24 @@
     window.addEventListener("pointerdown", unlockAudio, { passive: true });
     window.addEventListener("keydown", unlockAudio);
     window.addEventListener("touchstart", unlockAudio, { passive: true });
+
+    /* Bascule du bouton son — sans déclencher la sortie de page */
+    function onSoundToggle(e) {
+      e.stopPropagation();
+      if (heartbeatTimer) {
+        userMuted = true;
+        stopHeartbeat();
+        setSoundUI(false);
+      } else {
+        userMuted = false;
+        unlockAudio(); /* ce clic compte comme geste : débloque et lance le battement */
+      }
+    }
+    function onSoundKeyDown(e) {
+      e.stopPropagation(); /* Entrée/Espace sur le bouton ne doit pas déclencher la sortie */
+    }
+    soundBtn.addEventListener("click", onSoundToggle);
+    soundBtn.addEventListener("keydown", onSoundKeyDown);
 
     /* ---------- Sortie : explosion → fondu → redirection ---------- */
     function leave(clientX, clientY) {
@@ -589,6 +681,8 @@
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
       window.removeEventListener("touchstart", unlockAudio);
+      soundBtn.removeEventListener("click", onSoundToggle);
+      soundBtn.removeEventListener("keydown", onSoundKeyDown);
       stopHeartbeat();
       if (audioCtx) { audioCtx.close(); audioCtx = null; }
       window.removeEventListener("pagehide", cleanup);
