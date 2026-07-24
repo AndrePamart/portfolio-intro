@@ -122,11 +122,36 @@
       letter-spacing: .34em;
       text-transform: uppercase;
       opacity: .55;
-      animation: andre-breathe 3.2s ease-in-out infinite;
+      pointer-events: auto;
+      cursor: pointer;
+      /* Reflet métallique : dégradé clippé dans le texte */
+      background-image: linear-gradient(100deg,
+        var(--andre-fg) 42%,
+        #ffffff 50%,
+        var(--andre-fg) 58%);
+      background-size: 250% 100%;
+      background-position: 120% 0;
+      -webkit-background-clip: text;
+              background-clip: text;
+      color: transparent;
+      transition: transform .3s ease, letter-spacing .3s ease;
+      will-change: transform, background-position;
+      animation: andre-breathe 3.2s ease-in-out infinite,
+                 andre-shine 5s linear infinite;
+    }
+    #andre-intro .andre-cta:hover {
+      transform: scale(1.03);
+      letter-spacing: .42em;
     }
     @keyframes andre-breathe {
       0%, 100% { opacity: .3; }
       50%      { opacity: .75; }
+    }
+    /* Traversée du reflet ~300 ms, répétée toutes les 5 s */
+    @keyframes andre-shine {
+      0%   { background-position: 120% 0; }
+      6%   { background-position: -30% 0; }
+      100% { background-position: -30% 0; }
     }
 
     /* ---- Voile de sortie (fondu au noir) ---- */
@@ -142,7 +167,17 @@
     #andre-intro.andre-is-fading .andre-fade { opacity: 1; }
 
     @media (prefers-reduced-motion: reduce) {
-      #andre-intro .andre-cta { animation: none; opacity: .6; }
+      #andre-intro .andre-cta {
+        animation: none;
+        opacity: .6;
+        background-image: none;
+        color: var(--andre-fg);
+        transition: none;
+      }
+      #andre-intro .andre-cta:hover {
+        transform: none;
+        letter-spacing: .34em;
+      }
       #andre-intro .andre-portrait { transition: opacity .4s ease; }
       #andre-intro .andre-fade { transition: opacity .4s ease; }
     }
@@ -162,7 +197,7 @@
     <header class="andre-title">
       <h1>André Pamart</h1>
       <p>Directeur Artistique</p>
-      <div class="andre-cta" aria-hidden="true">Cliquer pour accéder</div>
+      <div class="andre-cta" aria-hidden="true">ENTER</div>
     </header>
 
     <div class="andre-fade" aria-hidden="true"></div>
@@ -482,6 +517,11 @@
       if (ext) ext.loseContext();
     }
     window.addEventListener("pagehide", cleanup);
+
+    /* ---------- Retour navigateur (Back/Forward Cache) ---------- */
+    window.addEventListener("pageshow", function (e) {
+      if (e.persisted) window.location.reload();
+    });
   })();
   </script>
 
