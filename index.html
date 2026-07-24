@@ -11,6 +11,8 @@
 
   <!-- Aperçu lors du partage (réseaux sociaux, messageries) -->
   <meta property="og:type" content="website">
+  <meta property="og:url" content="https://andrepamart.com/">
+  <meta property="og:site_name" content="André Pamart">
   <meta property="og:title" content="André Pamart — Directeur Artistique">
   <meta property="og:description" content="André Pamart, Directeur Artistique. Découvrir le portfolio.">
   <meta property="og:image" content="https://www.notre-dame-de-france.com/wp-content/uploads/2026/07/pp-site-andre.jpg">
@@ -456,6 +458,64 @@
     root.addEventListener("mousemove", onMouseMove, { passive: true });
     root.addEventListener("touchmove", onTouchMove, { passive: true });
 
+    /* ---------- Battement de cœur en ambiance (Web Audio, aucun fichier) ---------- */
+    var audioCtx = null;
+    var heartbeatTimer = 0;
+
+    function thump(when, strength) {
+      /* basse sourde : sinus grave avec chute de fréquence + enveloppe courte */
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(65, when);
+      osc.frequency.exponentialRampToValueAtTime(38, when + .18);
+      g.gain.setValueAtTime(.0001, when);
+      g.gain.exponentialRampToValueAtTime(strength, when + .015);
+      g.gain.exponentialRampToValueAtTime(.0001, when + .22);
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start(when);
+      osc.stop(when + .25);
+    }
+
+    function playHeartbeatPair() {
+      var t = audioCtx.currentTime + .02;
+      thump(t, .85);       /* boom */
+      thump(t + .28, .55); /* boom, plus doux */
+    }
+
+    function startHeartbeat() {
+      if (heartbeatTimer || !audioCtx || audioCtx.state !== "running") return;
+      playHeartbeatPair();
+      heartbeatTimer = setInterval(playHeartbeatPair, 1100);
+    }
+
+    function stopHeartbeat() {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = 0;
+      }
+    }
+
+    /* Démarrage dès que possible ; les navigateurs exigent souvent
+       une première interaction avant d'autoriser le son */
+    function unlockAudio() {
+      if (!audioCtx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        audioCtx = new AC();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().then(startHeartbeat);
+      } else {
+        startHeartbeat();
+      }
+    }
+    unlockAudio(); /* tentative immédiate au chargement */
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
+
     /* ---------- Sortie : explosion → fondu → redirection ---------- */
     function leave(clientX, clientY) {
       if (isLeaving) return;
@@ -478,6 +538,7 @@
 
       timers.push(setTimeout(function () {
         root.classList.add("andre-is-fading");
+        stopHeartbeat();
       }, explosion));
 
       timers.push(setTimeout(function () {
@@ -525,6 +586,11 @@
       root.removeEventListener("touchmove", onTouchMove);
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+      stopHeartbeat();
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
       window.removeEventListener("pagehide", cleanup);
       var ext = gl.getExtension("WEBGL_lose_context");
       if (ext) ext.loseContext();
