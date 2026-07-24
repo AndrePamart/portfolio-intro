@@ -1,0 +1,471 @@
+
+<!-- ============================================================
+     ANDRÉ PAMART — Intro WebGL "noisy ring"
+     Composant autonome pour bloc Embed Adobe Portfolio.
+     Tout est scopé dans #andre-intro (classes préfixées "andre-").
+     ============================================================ -->
+<div id="andre-intro" class="andre-hero" role="button" tabindex="0"
+     aria-label="André Pamart, Directeur Artistique. Cliquer pour accéder au portfolio.">
+
+  <style>
+    /* ---- Scope : rien ne sort de #andre-intro ---- */
+    #andre-intro {
+      --andre-bg: #000000;
+      --andre-fg: #eeeeee;
+      --andre-img-size: min(62vmin, 620px);
+      --andre-font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+      position: relative;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      max-width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: var(--andre-bg);
+      cursor: pointer;
+      isolation: isolate;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    @supports (height: 100svh) {
+      #andre-intro { height: 100svh; }
+    }
+    #andre-intro:focus-visible {
+      outline: 2px solid var(--andre-fg);
+      outline-offset: -6px;
+    }
+
+    /* ---- Portrait centré, masque circulaire adouci ---- */
+    #andre-intro .andre-portrait {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: var(--andre-img-size);
+      height: var(--andre-img-size);
+      transform: translate(-50%, -50%) scale(1);
+      object-fit: cover;
+      border-radius: 50%;
+      -webkit-mask-image: radial-gradient(circle, #000 55%, transparent 72%);
+              mask-image: radial-gradient(circle, #000 55%, transparent 72%);
+      z-index: 1;
+      pointer-events: none;
+      transition: transform 3.2s cubic-bezier(.16, 1, .3, 1),
+                  opacity 1.2s ease;
+      will-change: transform, opacity;
+    }
+    #andre-intro.andre-is-leaving .andre-portrait {
+      transform: translate(-50%, -50%) scale(1.12);
+      opacity: 0;
+    }
+
+    /* ---- Canvas WebGL en overlay au-dessus de l'image ---- */
+    #andre-intro .andre-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* ---- Titre ---- */
+    #andre-intro .andre-title {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+      text-align: center;
+      font-family: var(--andre-font);
+      color: var(--andre-fg);
+      pointer-events: none;
+      transition: opacity .7s ease;
+    }
+    #andre-intro.andre-is-leaving .andre-title { opacity: 0; }
+
+    #andre-intro .andre-title h1 {
+      margin: 0;
+      font-size: clamp(1rem, 2.4vh, 1.4rem);
+      font-weight: 500;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      text-shadow: 0 1px 12px rgba(0, 0, 0, .8);
+    }
+    #andre-intro .andre-title p {
+      margin: .45em 0 0;
+      font-size: clamp(.7rem, 1.7vh, .95rem);
+      font-weight: 400;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      opacity: .75;
+      text-shadow: 0 1px 12px rgba(0, 0, 0, .8);
+    }
+    #andre-intro .andre-cta {
+      margin-top: clamp(1.4rem, 4vh, 2.6rem);
+      font-size: clamp(.6rem, 1.4vh, .8rem);
+      letter-spacing: .34em;
+      text-transform: uppercase;
+      opacity: .55;
+      animation: andre-breathe 3.2s ease-in-out infinite;
+    }
+    @keyframes andre-breathe {
+      0%, 100% { opacity: .3; }
+      50%      { opacity: .75; }
+    }
+
+    /* ---- Voile de sortie (fondu au noir) ---- */
+    #andre-intro .andre-fade {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      background: var(--andre-bg);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1s ease;
+    }
+    #andre-intro.andre-is-fading .andre-fade { opacity: 1; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #andre-intro .andre-cta { animation: none; opacity: .6; }
+      #andre-intro .andre-portrait { transition: opacity .4s ease; }
+      #andre-intro .andre-fade { transition: opacity .4s ease; }
+    }
+  </style>
+
+  <img class="andre-portrait"
+       src="https://www.notre-dame-de-france.com/wp-content/uploads/2026/07/andre-pp-scaled.webp"
+       alt="Portrait d'André Pamart" decoding="async" fetchpriority="high">
+
+  <canvas class="andre-canvas" aria-hidden="true"></canvas>
+
+  <header class="andre-title">
+    <h1>André Pamart</h1>
+    <p>Directeur Artistique</p>
+    <div class="andre-cta" aria-hidden="true">Cliquer pour accéder</div>
+  </header>
+
+  <div class="andre-fade" aria-hidden="true"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    /* =======================================================
+       CONFIGURATION — remplacer l'URL de destination ici
+       ======================================================= */
+    var ANDRE_NEXT_URL = "https://VOTRE-PAGE-SUIVANTE.com"; /* ← REMPLACER */
+
+    var EXPLOSION_MS = 2600; /* durée visible de l'explosion avant le fondu */
+    var FADE_MS      = 1000; /* durée du fondu au noir */
+
+    var root   = document.getElementById("andre-intro");
+    if (!root) return;
+    var canvas = root.querySelector(".andre-canvas");
+
+    var reducedMotion = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    /* ---------- Shaders ---------- */
+    var VERT = [
+      "precision mediump float;",
+      "varying vec2 vUv;",
+      "attribute vec2 a_position;",
+      "void main(){",
+      "  vUv = .5 * (a_position + 1.);",
+      "  gl_Position = vec4(a_position, 0., 1.);",
+      "}"
+    ].join("\n");
+
+    var FRAG = [
+      "precision mediump float;",
+      "varying vec2 vUv;",
+      "uniform float u_time;",
+      "uniform float u_ratio;",
+      "uniform float u_click_time;",
+      "uniform vec2 u_pointer;",
+      "uniform vec2 u_click;",
+      "#define TWO_PI 6.28318530718",
+      "#define PI 3.14159265358979323846",
+
+      "float rand(vec2 n){",
+      "  return fract(cos(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);",
+      "}",
+      "float noise(vec2 n){",
+      "  const vec2 d = vec2(0., 1.);",
+      "  vec2 b = floor(n), f = smoothstep(vec2(0.), vec2(1.), fract(n));",
+      "  return mix(mix(rand(b), rand(b + d.yx), f.x), mix(rand(b + d.xy), rand(b + d.yy), f.x), f.y);",
+      "}",
+      "float fbm(vec2 n){",
+      "  float total = 0., amplitude = .4;",
+      "  for (int i = 0; i < 12; i++){",
+      "    total += noise(n) * amplitude;",
+      "    n += n;",
+      "    amplitude *= .6;",
+      "  }",
+      "  return total;",
+      "}",
+
+      "float get_ring_shape(vec2 uv, float innerRadius, float outerRadius){",
+      "  float d = length(uv);",
+      "  float w = outerRadius - innerRadius;",
+      "  float v = smoothstep(innerRadius, innerRadius + w, d);",
+      "  v -= smoothstep(outerRadius, outerRadius + w, d);",
+      "  return clamp(v, 0., 1.);",
+      "}",
+      "float get_dot_shape(vec2 uv, vec2 center, float pwr){",
+      "  float s = 1. - length(uv - center);",
+      "  s = clamp(s, 0., 1.);",
+      "  s = pow(s, pwr);",
+      "  return s * .18;",
+      "}",
+      "float get_sym_impulse(float v, float pwr){",
+      "  return 1. - pow(1. - pow(2. * v - 1., 4.), pwr);",
+      "}",
+
+      "void main(){",
+      "  vec2 uv = vUv * 2. - 1.;",
+      "  uv.x *= u_ratio;",
+      /* En portrait, on renormalise pour que l'anneau reste dans l'écran */
+      "  uv /= max(min(1., u_ratio), .001);",
+
+      "  float noise_scale = 4.;",
+      "  float t = .0003 * u_time;",
+      "  float t_click = .001 * u_click_time;",
+
+      "  float expl_duration = 3.5;",
+      "  float t_click_explosion = (1. - step(expl_duration, t_click)) * t_click;",
+      "  t_click_explosion = pow(t_click_explosion, .6);",
+
+      "  float atg = atan(uv.y, uv.x);",
+      "  float angle = (atg + PI) / TWO_PI;",
+
+      "  vec2 polar_uv = vec2(atg, t + 2. / pow(length(uv), .5));",
+      "  polar_uv *= noise_scale;",
+      "  float noise_left = fbm(polar_uv);",
+      "  polar_uv.x = mod(polar_uv.x, noise_scale * TWO_PI);",
+      "  float noise_right = fbm(polar_uv);",
+      "  float noise = mix(noise_right, noise_left, smoothstep(-.2, .2, uv.x));",
+
+      "  vec2 point = u_pointer * 2. - 1.;",
+      "  point.x *= u_ratio;",
+      "  point /= max(min(1., u_ratio), .001);",
+      "  vec2 click = u_click * 2. - 1.;",
+      "  click.x *= u_ratio;",
+      "  click /= max(min(1., u_ratio), .001);",
+
+      "  float pointer_shape = 0.;",
+      "  const int points_num = 5;",
+      "  for (int i = 0; i < points_num; i++){",
+      "    float a = float(i) / float(points_num) * TWO_PI;",
+      "    a += 4. * t;",
+      "    float sp = 6. * t_click_explosion * max(.2, rand(vec2(float(i))));",
+      "    float x = sp * cos(a);",
+      "    float y = -sp * sin(a);",
+      "    pointer_shape += get_dot_shape(uv, click + vec2(x, y), 2.);",
+      "  }",
+      "  pointer_shape /= float(points_num);",
+      "  pointer_shape *= min(5., 14. * t_click_explosion);",
+      "  pointer_shape += get_dot_shape(uv, point, 4.);",
+
+      "  float center_shape = 1. - pow(smoothstep(2., .0, length(uv)), 50.);",
+      "  pointer_shape *= center_shape;",
+
+      "  float radius = .7 + .5 * pointer_shape;",
+      "  float thickness = .1 + .75 * pow(pointer_shape, .6);",
+      "  float ring_shape = get_ring_shape(uv * (.9 + .4 * noise), radius - .8 * thickness, radius + .2 * thickness);",
+
+      "  vec3 radial_color = vec3(0.);",
+      "  radial_color.r = .5 + get_sym_impulse(fract(angle + .2 * t), 4.);",
+      "  radial_color.g = 2. * get_sym_impulse(fract(angle + .2 * t), 10.);",
+      "  radial_color.b = smoothstep(4., 0., radial_color.r);",
+
+      "  vec3 point_color = radial_color;",
+      "  point_color.r *= 60. * pow(pointer_shape, 2.);",
+      "  point_color *= pointer_shape;",
+
+      "  vec3 color = vec3(ring_shape) + point_color;",
+      "  color = clamp(color, 0., 1.);",
+
+      /* Alpha = luminosité max → le noir devient transparent,
+         l'image apparaît sous l'anneau (sortie prémultipliée) */
+      "  float alpha = max(color.r, max(color.g, color.b));",
+      "  gl_FragColor = vec4(color * alpha, alpha);",
+      "}"
+    ].join("\n");
+
+    /* ---------- Init WebGL ---------- */
+    var gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true }) ||
+             canvas.getContext("experimental-webgl", { alpha: true, premultipliedAlpha: true });
+    if (!gl) { canvas.style.display = "none"; return; }
+
+    function compile(src, type) {
+      var sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        gl.deleteShader(sh);
+        return null;
+      }
+      return sh;
+    }
+
+    var vs = compile(VERT, gl.VERTEX_SHADER);
+    var fs = compile(FRAG, gl.FRAGMENT_SHADER);
+    if (!vs || !fs) { canvas.style.display = "none"; return; }
+
+    var program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      canvas.style.display = "none";
+      return;
+    }
+    gl.useProgram(program);
+
+    var buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+    var aPosition = gl.getAttribLocation(program, "a_position");
+    gl.enableVertexAttribArray(aPosition);
+    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+    var U = {
+      time:      gl.getUniformLocation(program, "u_time"),
+      ratio:     gl.getUniformLocation(program, "u_ratio"),
+      clickTime: gl.getUniformLocation(program, "u_click_time"),
+      pointer:   gl.getUniformLocation(program, "u_pointer"),
+      click:     gl.getUniformLocation(program, "u_click")
+    };
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+    /* ---------- État ---------- */
+    var W = 1, H = 1;
+    var mouse = { x: -9999, y: -9999, tX: -9999, tY: -9999 };
+    var SMOOTH = .6;
+    var clickTime = 0;
+    var wasClicked = false;
+    var isLeaving = false;
+    var rafId = 0;
+    var timers = [];
+
+    /* ---------- Redimensionnement ---------- */
+    function resize() {
+      var rect = root.getBoundingClientRect();
+      W = Math.max(1, rect.width);
+      H = Math.max(1, rect.height);
+      var dpr = Math.min(window.devicePixelRatio || 1, 2); /* cap perf */
+      canvas.width  = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.uniform1f(U.ratio, W / H);
+    }
+
+    var ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(resize);
+      ro.observe(root);
+    } else {
+      window.addEventListener("resize", resize, { passive: true });
+    }
+    resize();
+
+    /* ---------- Pointeur (coordonnées locales au composant) ---------- */
+    function setPointer(clientX, clientY) {
+      var rect = root.getBoundingClientRect();
+      mouse.tX = clientX - rect.left;
+      mouse.tY = clientY - rect.top;
+    }
+    function onMouseMove(e) { setPointer(e.clientX, e.clientY); }
+    function onTouchMove(e) {
+      if (e.targetTouches.length) {
+        setPointer(e.targetTouches[0].clientX, e.targetTouches[0].clientY);
+      }
+    }
+    root.addEventListener("mousemove", onMouseMove, { passive: true });
+    root.addEventListener("touchmove", onTouchMove, { passive: true });
+
+    /* ---------- Sortie : explosion → fondu → redirection ---------- */
+    function leave(clientX, clientY) {
+      if (isLeaving) return;
+      isLeaving = true;
+
+      var rect = root.getBoundingClientRect();
+      var cx = (clientX === undefined) ? rect.width  / 2 : clientX - rect.left;
+      var cy = (clientY === undefined) ? rect.height / 2 : clientY - rect.top;
+
+      gl.uniform2f(U.click, cx / W, 1 - cy / H);
+      wasClicked = true;
+      clickTime = performance.now();
+
+      root.classList.add("andre-is-leaving");
+      root.setAttribute("aria-disabled", "true");
+      root.style.cursor = "default";
+
+      var explosion = reducedMotion ? 200 : EXPLOSION_MS;
+      var fade      = reducedMotion ? 400 : FADE_MS;
+
+      timers.push(setTimeout(function () {
+        root.classList.add("andre-is-fading");
+      }, explosion));
+
+      timers.push(setTimeout(function () {
+        window.location.href = ANDRE_NEXT_URL;
+      }, explosion + fade));
+    }
+
+    function onClick(e) { leave(e.clientX, e.clientY); }
+    function onKeyDown(e) {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        leave();
+      }
+    }
+    root.addEventListener("click", onClick);
+    root.addEventListener("keydown", onKeyDown);
+
+    /* ---------- Boucle de rendu ---------- */
+    function render() {
+      var now = performance.now();
+
+      gl.uniform1f(U.time, now);
+      if (wasClicked) gl.uniform1f(U.clickTime, now - clickTime);
+
+      mouse.x += (mouse.tX - mouse.x) * SMOOTH;
+      mouse.y += (mouse.tY - mouse.y) * SMOOTH;
+      gl.uniform2f(U.pointer, mouse.x / W, 1 - mouse.y / H);
+
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      rafId = requestAnimationFrame(render);
+    }
+    rafId = requestAnimationFrame(render);
+
+    /* ---------- Nettoyage (aucune fuite mémoire) ---------- */
+    function cleanup() {
+      cancelAnimationFrame(rafId);
+      timers.forEach(clearTimeout);
+      timers.length = 0;
+      if (ro) ro.disconnect();
+      else window.removeEventListener("resize", resize);
+      root.removeEventListener("mousemove", onMouseMove);
+      root.removeEventListener("touchmove", onTouchMove);
+      root.removeEventListener("click", onClick);
+      root.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pagehide", cleanup);
+      var ext = gl.getExtension("WEBGL_lose_context");
+      if (ext) ext.loseContext();
+    }
+    window.addEventListener("pagehide", cleanup);
+  })();
+  </script>
+</div>
