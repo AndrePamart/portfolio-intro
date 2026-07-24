@@ -1,13 +1,26 @@
 
-<!-- ============================================================
-     ANDRÉ PAMART — Intro WebGL "noisy ring"
-     Composant autonome pour bloc Embed Adobe Portfolio.
-     Tout est scopé dans #andre-intro (classes préfixées "andre-").
-     ============================================================ -->
-<div id="andre-intro" class="andre-hero" role="button" tabindex="0"
-     aria-label="André Pamart, Directeur Artistique. Cliquer pour accéder au portfolio.">
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>André Pamart — Directeur Artistique</title>
+  <meta name="description" content="André Pamart, Directeur Artistique. Cliquer pour accéder au portfolio.">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
 
   <style>
+    /* ---- Reset navigateur : aucune marge, aucun scroll, aucun espace blanc ---- */
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
     /* ---- Scope : rien ne sort de #andre-intro ---- */
     #andre-intro {
       --andre-bg: #000000;
@@ -17,7 +30,7 @@
 
       position: relative;
       display: block;
-      width: 100vw;
+      width: 100%;
       height: 100vh;
       max-width: 100%;
       margin: 0;
@@ -134,20 +147,26 @@
       #andre-intro .andre-fade { transition: opacity .4s ease; }
     }
   </style>
+</head>
+<body>
 
-  <img class="andre-portrait"
-       src="https://www.notre-dame-de-france.com/wp-content/uploads/2026/07/andre-pp-scaled.webp"
-       alt="Portrait d'André Pamart" decoding="async" fetchpriority="high">
+  <div id="andre-intro" class="andre-hero" role="button" tabindex="0"
+       aria-label="André Pamart, Directeur Artistique. Cliquer pour accéder au portfolio.">
 
-  <canvas class="andre-canvas" aria-hidden="true"></canvas>
+    <img class="andre-portrait"
+         src="https://www.notre-dame-de-france.com/wp-content/uploads/2026/07/andre-pp-scaled.webp"
+         alt="Portrait d'André Pamart" decoding="async" fetchpriority="high">
 
-  <header class="andre-title">
-    <h1>André Pamart</h1>
-    <p>Directeur Artistique</p>
-    <div class="andre-cta" aria-hidden="true">Cliquer pour accéder</div>
-  </header>
+    <canvas class="andre-canvas" aria-hidden="true"></canvas>
 
-  <div class="andre-fade" aria-hidden="true"></div>
+    <header class="andre-title">
+      <h1>André Pamart</h1>
+      <p>Directeur Artistique</p>
+      <div class="andre-cta" aria-hidden="true">Cliquer pour accéder</div>
+    </header>
+
+    <div class="andre-fade" aria-hidden="true"></div>
+  </div>
 
   <script>
   (function () {
@@ -156,10 +175,10 @@
     /* =======================================================
        CONFIGURATION — remplacer l'URL de destination ici
        ======================================================= */
-    var ANDRE_NEXT_URL = "https://andrepamart.myportfolio.com"; /* ← REMPLACER */
+    var ANDRE_NEXT_URL = "https://andrepamart.myportfolio.com";
 
     var EXPLOSION_MS = 2600; /* durée visible de l'explosion avant le fondu */
-    var FADE_MS      = 500; /* durée du fondu au noir */
+    var FADE_MS      = 500;  /* durée du fondu au noir */
 
     var root   = document.getElementById("andre-intro");
     if (!root) return;
@@ -228,7 +247,6 @@
       "void main(){",
       "  vec2 uv = vUv * 2. - 1.;",
       "  uv.x *= u_ratio;",
-      /* En portrait, on renormalise pour que l'anneau reste dans l'écran */
       "  uv /= max(min(1., u_ratio), .001);",
 
       "  float noise_scale = 4.;",
@@ -289,8 +307,6 @@
       "  vec3 color = vec3(ring_shape) + point_color;",
       "  color = clamp(color, 0., 1.);",
 
-      /* Alpha = luminosité max → le noir devient transparent,
-         l'image apparaît sous l'anneau (sortie prémultipliée) */
       "  float alpha = max(color.r, max(color.g, color.b));",
       "  gl_FragColor = vec4(color * alpha, alpha);",
       "}"
@@ -468,4 +484,6 @@
     window.addEventListener("pagehide", cleanup);
   })();
   </script>
-</div>
+
+</body>
+</html>
